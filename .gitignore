@@ -1,0 +1,33 @@
+# Секреты
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.pyc
+*.pyo
+*.pyd
+
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# Логи
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+*.tar
+Dockerfile
+.dockerignore
+
+# Git
+.git/
