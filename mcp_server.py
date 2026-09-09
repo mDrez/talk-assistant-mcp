@@ -18,10 +18,16 @@ def _safe_cookie_token(token: str) -> str:
 
 # НАСТРОЙКА ЛОГИРОВАНИЯ
 
+LOG_DIR = "/app/logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    handlers=[logging.StreamHandler()]
+    handlers=[
+        logging.FileHandler(f"{LOG_DIR}/mcp_server.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger("mcp-server")
 
@@ -235,6 +241,58 @@ def send_email_to(recipient: str, subject: str, body: str) -> str:
 
 # ИНСТРУМЕНТ 4: ПОЛУЧЕНИЕ EMAIL УЧАСТНИКОВ
 
+# ИНСТРУМЕНТ 4: ПОЛУЧЕНИЕ EMAIL УЧАСТНИКОВ
+
+@mcp.tool()
+def get_participant_emails(recording_id: str) -> str:
+    """
+    Возвращает список email-адресов участников встречи.
+    """
+    logger.info("Запрос email участников для %s", recording_id)
+
+    url = f"{base_url}/api/recordings/{recording_id}"
+    headers = {"Cookie": f"sessionToken={_safe_cookie_token(session_token)}"}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+        participants = data.get("participants", [])
+
+        if not participants:
+            logger.info("Участники не найдены для %s", recording_id)
+            return "Участники не найдены."
+
+        result = [f"Участники ({len(participants)}):"]
+        emails = []
+
+        for p in participants:
+            user_info = p.get("userInfo", {})
+            full_login = user_info.get("login", "")
+            name = f"{user_info.get('firstname', '')} {user_info.get('surname', '')}".strip()
+
+            login = _extract_login(full_login)
+
+            if login:
+                email = _get_email_from_login(login)
+                emails.append(email)
+                result.append(f"  - {name or login} -> {email}")
+            else:
+                result.append(f"  - {name or 'Неизвестно'} -> нет логина")
+
+        result.append("")
+        result.append("Email-адреса для отправки:")
+        result.extend(f"  - {e}" for e in emails)
+
+        return "\n".join(result)
+
+    except requests.exceptions.RequestException as e:
+        logger.error("Ошибка API для %s: %s", recording_id, e)
+        return f"Ошибка API: {e}"
+    except Exception as e:
+        logger.exception("Неожиданная ошибка в get_participant_emails")
+        return f"Неожиданная ошибка: {e}"
 
 # ИНСТРУМЕНТ 5: ОТПРАВКА САММАРИ ВСЕМ УЧАСТНИКАМ
 
@@ -351,26 +409,8 @@ def send_summary_to_participants(recording_id: str) -> str:
 
 
 
-# HEALTH CHECK (НА ТОМ ЖЕ ПОРТУ)
-
-async def healthz(request):
-    return Response("OK", status_code=200)
-
-# Создаём ASGI-приложение с health-check и MCP
-mcp_app = mcp.streamable_http_app()
-app = Starlette(routes=[
-    Route("/healthz", healthz),
-    Mount("/", app=mcp_app),
-])
 
 
-
-# ТОЧКА ВХОДА
-
-# if __name__ == "__main__":
-#     logger.info("Запуск MCP-сервера на порту 9999")
-#     logger.info("Health-check доступен по адресу: /healthz")
-#     uvicorn.run(app, host="0.0.0.0", port=9999)
 
 if __name__ == "__main__":
     logger.info("Starting MCP server on port 9999")
